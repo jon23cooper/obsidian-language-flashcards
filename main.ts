@@ -84,7 +84,7 @@ class FlashcardModal extends Modal {
 	dictForm: string;
 	clozeWord: string;
 	phraseMinusClozeWord: string;
-	flashCardDelineator = "  <br>  <br>";
+	flashCardDelineator = "\n\n";
 
 	onSubmit: (phrase: string) => void;
 
@@ -153,7 +153,7 @@ class FlashcardModal extends Modal {
 	}
 
 	addLine = (text: string): string => {
-		return(text + "  <br>")
+		return(text + "\n")
 	}
 
 	generateCloze = ():string => {
