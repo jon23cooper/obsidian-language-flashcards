@@ -130,7 +130,9 @@ class FlashcardModal extends Modal {
 				const startPosition = this.phrase.indexOf("==") + 2;
 				const endPosition = this.phrase.indexOf("==", startPosition + 1);
 				this.clozeWord = this.phrase.substring(startPosition, endPosition);
-				this.phraseMinusClozeWord = this.phrase.substring(0, startPosition - 2) + " . . . . . " + this.phrase.substring(endPosition + 2);
+				const clozeWordLength = endPosition - startPosition;
+				const clozeWordBlanked = " " + "_ ".repeat(clozeWordLength);
+				this.phraseMinusClozeWord = this.phrase.substring(0, startPosition - 2) + clozeWordBlanked + this.phrase.substring(endPosition + 2);
 				const result:string = this.getFlashcards();
 				this.onSubmit(result);
 			})
