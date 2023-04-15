@@ -3,11 +3,11 @@ import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Set
 // Remember to rename these classes and interfaces!
 
 interface LangFlashcardsPluginSettings {
-	mySetting: string;
+	clozeDelimiter: string;
 }
 
 const DEFAULT_SETTINGS: LangFlashcardsPluginSettings = {
-	mySetting: 'default'
+	clozeDelimiter: "highlight"
 }
 
 export default class LangFlashcardsPlugin extends Plugin {
@@ -33,7 +33,7 @@ export default class LangFlashcardsPlugin extends Plugin {
 		// This adds a simple command that can be triggered anywhere
 		this.addCommand({
 			id: 'open-flashcard-modal',
-			name: 'Open flashcard creator',
+			name: 'Create Language Flashcards',
 			editorCallback: (editor: Editor) => {
 				const selectedText:string = editor.getSelection();
 
@@ -42,7 +42,7 @@ export default class LangFlashcardsPlugin extends Plugin {
 				};
 			
 			
-				new FlashcardModal(this.app, onSubmit).open();
+				new FlashcardModal(this.app, this.settings, onSubmit).open();
 			},
 			
 		});
@@ -80,19 +80,26 @@ export default class LangFlashcardsPlugin extends Plugin {
 class FlashcardModal extends Modal {
 	// class variables 
 	phrase: string;
+	displayPhrase: string;
 	imageLink: string;
 	dictForm: string;
 	clozeWord: string;
+	clozeWordStartPosition: number;
+	clozeWordEndPosition: number;
 	phraseMinusClozeWord: string;
 	flashCardDelineator = "\n\n";
+	flagText: string;
+	mySettings: LangFlashcardsPluginSettings
 
 	onSubmit: (phrase: string) => void;
 
 	constructor(
 		app: App, 
+		settings: LangFlashcardsPluginSettings,
 		onSubmit: (phrase: string) => void
 	) {
 			super(app);
+			this.mySettings = settings
 			this.onSubmit = onSubmit;
 		}
 
@@ -101,7 +108,7 @@ class FlashcardModal extends Modal {
 		const { contentEl } = this;
   
 		contentEl.createEl("h1", { text: "Flashcard creator" });
-  
+		// Text box to allow entry of flashcard phrase
 		new Setting(contentEl)
 			.setName("Enter flashcard phrase:")
 			.addText((text) =>
@@ -109,12 +116,21 @@ class FlashcardModal extends Modal {
 				this.phrase = value
 			}));
 		
-			new Setting(contentEl)
+			// Text box to allow entry of image url
+		new Setting(contentEl)
 			.setName("Enter image URL:")
 			.addText((text) =>
 				text.onChange((value) => {
 				this.imageLink = "![image](" + value + ")";
 			})); 
+
+		new Setting(contentEl).addButton((btn) => btn
+			.setButtonText("Browse..")	
+			.setCta()
+			.onClick(() => {
+				window.open("https://giphy.com/")
+			})
+		)
 		
 		new Setting(contentEl).setName("Enter dictionary form of keyword:").addText((text) =>
 				text.onChange((value) => {
@@ -127,12 +143,9 @@ class FlashcardModal extends Modal {
 			.setCta()
 			.onClick(() => {
 				this.close();
-				const startPosition = this.phrase.indexOf("==") + 2;
-				const endPosition = this.phrase.indexOf("==", startPosition + 1);
-				this.clozeWord = this.phrase.substring(startPosition, endPosition);
-				const clozeWordLength = endPosition - startPosition;
-				const clozeWordBlanked = " " + "_ ".repeat(clozeWordLength);
-				this.phraseMinusClozeWord = this.phrase.substring(0, startPosition - 2) + clozeWordBlanked + this.phrase.substring(endPosition + 2);
+				this.setClozeWord();
+				this.setPhraseMinusClozeWord();
+				this.setDisplayPhrase();
 				const result:string = this.getFlashcards();
 				this.onSubmit(result);
 			})
@@ -160,7 +173,7 @@ class FlashcardModal extends Modal {
 
 	generateCloze = ():string => {
 		return (
-			this.addLine("**Fill in the blank**") + 
+			this.addLine("Fill in the blank") + 
 			this.addLine(this.phrase) +
 			this.addLine(this.imageLink) +
 			this.flashCardDelineator
@@ -173,7 +186,7 @@ class FlashcardModal extends Modal {
 			this.addLine(this.clozeWord) +
 			this.addLine("?") +
 			this.addLine("**" + this.clozeWord + "**") +
-			this.addLine(this.phrase) +
+			this.addLine(this.displayPhrase) +
 			this.addLine(this.imageLink) +
 			this.flashCardDelineator
 		);
@@ -186,7 +199,7 @@ class FlashcardModal extends Modal {
 			this.addLine(this.imageLink) +
 			this.addLine("?") +
 			this.addLine(this.dictForm + "(dictionary form)") +
-			this.addLine(this.phrase) +
+			this.addLine(this.displayPhrase) +
 			this.addLine(this.imageLink)+
 			this.flashCardDelineator
 		)
@@ -197,13 +210,50 @@ class FlashcardModal extends Modal {
 			this.addLine("**What's this?**") +
 			this.addLine(this.dictForm) +
 			this.addLine("?") +
-			this.addLine(this.phrase) +
+			this.addLine(this.displayPhrase) +
 			this.addLine(this.imageLink) +
 			this.addLine("Dictionary form: " + this.dictForm) +
 			this.flashCardDelineator
 		)
 	}
+
+	getClozeDelimiters = (): Array<string> => {
+		const delimiters = new Map<string, Array<string>>([
+			['highlight', ['==', '==']],
+			['bold', ['**', "**"]],
+			['curly', ['{{', '}}']]
+			]);
+		// this.flagText = this.mySettings.clozeDelimiter == "bold" ? "==" : "**";
+		return delimiters.get(this.mySettings.clozeDelimiter)??["==","=="]
+	}
+
+	setClozeWord = (): void => {
+		const clozeDelimiters: Array<string> = this.getClozeDelimiters();
+		this.clozeWordStartPosition = this.phrase.indexOf(clozeDelimiters[0]) + 2;
+		this.clozeWordEndPosition = this.phrase.indexOf(clozeDelimiters[1], this.clozeWordStartPosition + 1);
+		this.clozeWord = this.phrase.substring(this.clozeWordStartPosition, this.clozeWordEndPosition);
+	}
+
+	setDisplayPhrase = (): void => {
+		const delimiters: string[] = this.getClozeDelimiters();
+		this.displayPhrase = this.phrase.replace(delimiters[0], "==").replace(delimiters[1], "==");
+	}
+
+	setPhraseMinusClozeWord = (): void => {
+		const clozeWordLength = this.clozeWord.length;
+		const clozeWordBlanked = " " + "_ ".repeat(clozeWordLength);
+		this.phraseMinusClozeWord = this.phrase.substring(0, this.clozeWordStartPosition - 2) + 
+			clozeWordBlanked + 
+			this.phrase.substring(this.clozeWordEndPosition + 2);
+	}
+
+
 }
+
+/*
+Settings Tab
+*/
+
 class LangFlashcardsSettingTab extends PluginSettingTab {
 	plugin: LangFlashcardsPlugin;
 
@@ -218,17 +268,19 @@ class LangFlashcardsSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		containerEl.createEl('h2', {text: 'Settings for my Language flashcard plugin.'});
-
+		// Choose cloze placeholder, so that it matches that used in obsidian-spaced-repetition plugin
 		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
-			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
-				.onChange(async (value) => {
-					console.log('Secret: ' + value);
-					this.plugin.settings.mySetting = value;
-					await this.plugin.saveSettings();
-				}));
+			.setName('Cloze Settings')
+			.setDesc('Cloze placeholder set in obsidian-spaced-repetition plugin')
+			.addDropdown((dropdown) => {
+				dropdown
+					.addOptions({highlight: "==highlight==", bold: "**bolded**", curly: "{{curly brackets}}"})
+					.setValue(this.plugin.settings.clozeDelimiter)
+					.onChange(async (value: "highlight" | "bold" | "curly") => {
+						console.log("clozeSetting: " + value)
+						this.plugin.settings.clozeDelimiter = value;
+						await this.plugin.saveSettings();
+					})
+			});
 	}
 }
