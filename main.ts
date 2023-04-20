@@ -164,7 +164,7 @@ class FlashcardModal extends Modal {
 			this.generateWhatsThis() +
 			this.generateWhatsDictForm() + 
 			this.generateDictFormMeans() +
-			this.generateWHereDoesItGo()
+			this.generateWhereDoesItGo()
 		)
 	}
 
@@ -218,6 +218,23 @@ class FlashcardModal extends Modal {
 		)
 	}
 
+	generateWhereDoesItGo = (): string => {
+		return (
+			this.addLine(`Where does ${this.clozeWord} go in the sentence?`) +
+			this.addLine(
+				this.phrase.substring(0, this.clozeWordStartPosition - 2).trim() +  
+				this.phrase.substring(this.clozeWordEndPosition + 3).trim()
+			) +
+			this.addLine(this.imageLink) +
+			this.addLine("?") +
+			this.addLine(this.displayPhrase) +
+			this.addLine(this.imageLink) +
+			this.addLine("Dictionary form:") +
+			this.addLine(this.dictForm) +
+			this.flashCardDelineator
+		);
+	}
+
 	getClozeDelimiters = (): Array<string> => {
 		const delimiters = new Map<string, Array<string>>([
 			['highlight', ['==', '==']],
@@ -250,18 +267,7 @@ class FlashcardModal extends Modal {
 			this.phrase.substring(this.clozeWordEndPosition + 2);
 	}
 
-	generateWhereDoesItGo = (): string => {
-		return(
-			this.addLine(`Where does ${this.clozeWord} go in the sentence?");
-			this.addLine(this.phraseMinusClozeWord.replace("_ ", ""));
-			this.addLine(this.imageLink);
-			this.addLine("?");
-			this.addLine(this.displayPhrase);
-			this.addLine(this.imageLink);
-			this.addLine("Dictionary form:");
-			this.addLine(this.dictForm);
-		)
-	}
+	
 
 }
 
