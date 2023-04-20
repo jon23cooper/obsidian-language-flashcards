@@ -163,7 +163,8 @@ class FlashcardModal extends Modal {
 			this.generateCloze() +
 			this.generateWhatsThis() +
 			this.generateWhatsDictForm() + 
-			this.generateDictFormMeans()
+			this.generateDictFormMeans() +
+			this.generateWHereDoesItGo()
 		)
 	}
 
@@ -227,6 +228,8 @@ class FlashcardModal extends Modal {
 		return delimiters.get(this.mySettings.clozeDelimiter)??["==","=="]
 	}
 
+
+
 	setClozeWord = (): void => {
 		const clozeDelimiters: Array<string> = this.getClozeDelimiters();
 		this.clozeWordStartPosition = this.phrase.indexOf(clozeDelimiters[0]) + 2;
@@ -247,6 +250,18 @@ class FlashcardModal extends Modal {
 			this.phrase.substring(this.clozeWordEndPosition + 2);
 	}
 
+	generateWhereDoesItGo = (): string => {
+		return(
+			this.addLine(`Where does ${this.clozeWord} go in the sentence?");
+			this.addLine(this.phraseMinusClozeWord.replace("_ ", ""));
+			this.addLine(this.imageLink);
+			this.addLine("?");
+			this.addLine(this.displayPhrase);
+			this.addLine(this.imageLink);
+			this.addLine("Dictionary form:");
+			this.addLine(this.dictForm);
+		)
+	}
 
 }
 
