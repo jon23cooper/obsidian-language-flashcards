@@ -35,9 +35,12 @@ export default class LangFlashcardsPlugin extends Plugin {
 			id: 'open-flashcard-modal',
 			name: 'Create Language Flashcards',
 			editorCallback: (editor: Editor) => {
+				const lastLine = editor.lastLine();
+				editor.replaceRange("\n",{line: lastLine, ch:editor.getLine(lastLine).length});
 				const selectedText:string = editor.getSelection();
 
 				const onSubmit = (phrase: string) => {
+					editor.setSelection({line: editor.lastLine(), ch: 0})
 					editor.replaceSelection(`${phrase}`);
 				};
 			
@@ -244,8 +247,6 @@ class FlashcardModal extends Modal {
 		// this.flagText = this.mySettings.clozeDelimiter == "bold" ? "==" : "**";
 		return delimiters.get(this.mySettings.clozeDelimiter)??["==","=="]
 	}
-
-
 
 	setClozeWord = (): void => {
 		const clozeDelimiters: Array<string> = this.getClozeDelimiters();
