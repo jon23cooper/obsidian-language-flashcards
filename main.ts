@@ -225,7 +225,7 @@ class FlashcardModal extends Modal {
 		return (
 			this.addLine(`Where does ${this.clozeWord} go in the sentence?`) +
 			this.addLine(
-				this.phrase.substring(0, this.clozeWordStartPosition - 2).trim() +  
+				this.phrase.substring(0, this.clozeWordStartPosition - 2).trim() +  " " +
 				this.phrase.substring(this.clozeWordEndPosition + 3).trim()
 			) +
 			this.addLine(this.imageLink) +
