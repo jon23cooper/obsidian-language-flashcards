@@ -37,10 +37,10 @@ export default class LangFlashcardsPlugin extends Plugin {
 			editorCallback: (editor: Editor) => {
 				const lastLine = editor.lastLine();
 				editor.replaceRange("\n",{line: lastLine, ch:editor.getLine(lastLine).length});
-				const selectedText:string = editor.getSelection();
 
 				const onSubmit = (phrase: string) => {
-					editor.setSelection({line: editor.lastLine(), ch: 0})
+					const lastLine = editor.lastLine();
+					editor.setSelection({line: lastLine, ch: 0})
 					editor.replaceSelection(`${phrase}`);
 				};
 			
@@ -49,6 +49,46 @@ export default class LangFlashcardsPlugin extends Plugin {
 			},
 			
 		});
+
+		function extractSentence(paragraph: string, selection: string, cursor_pos: number): string{
+			const para_start = paragraph.slice(0, cursor_pos);
+			const para_end: string = paragraph.slice(cursor_pos);
+			// split para_start into sentences by looking for .!?
+			// return string in last split
+			const sentences = para_start.split(/[\.!\?]/g);
+			let sentence = sentences[sentences.length-1];
+			sentence = sentence.slice(0, sentence.length - selection.length);
+			sentence += "==";
+			sentence += selection;
+			sentence += "=="
+			// split para_end into sentences keeping the first sentence found
+			const sentence_end = para_end.split(/[\.!\?]/g)[0]
+			sentence += sentence_end;
+			return sentence;
+		}
+
+		this.addCommand({
+			id: 'create-flashcard-from-selection',
+			name: "Create Language Flashcard from Selection",
+			editorCallback: (editor: Editor) => {
+				const lastLine = editor.lastLine();
+				editor.replaceRange("\n",{line: lastLine, ch:editor.getLine(lastLine).length});
+				const selectedText:string = editor.getSelection();
+				//get current paragraph
+				const containingSentence = editor.getLine(editor.getCursor().line)
+				const cursor_pos = editor.getCursor().ch
+				const flashcard_sentence = extractSentence(containingSentence, selectedText, cursor_pos);
+
+				const onSubmit = (phrase: string) => {
+					const lastLine = editor.lastLine();
+					editor.setSelection({line: lastLine, ch: 0})
+					editor.replaceSelection(`${phrase}`);
+				};
+			
+			
+				new FlashcardsFromSelectionModal(this.app, flashcard_sentence, this.settings, onSubmit).open();
+			}
+		})
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new LangFlashcardsSettingTab(this.app, this));
@@ -79,6 +119,202 @@ export default class LangFlashcardsPlugin extends Plugin {
 
 
 }
+class FlashcardsFromSelectionModal extends Modal {
+	// class variables 
+	phrase: string;
+	displayPhrase: string;
+	imageLink: string;
+	dictForm: string;
+	clozeWord: string;
+	clozeWordStartPosition: number;
+	clozeWordEndPosition: number;
+	phraseMinusClozeWord: string;
+	flashCardDelineator = "\n\n";
+	flagText: string;
+	mySettings: LangFlashcardsPluginSettings
+
+	onSubmit: (phrase: string) => void;
+
+	constructor(
+		app: App, 
+		phrase: string,
+		settings: LangFlashcardsPluginSettings,
+		onSubmit: (phrase: string) => void
+
+	) {
+			super(app);
+			this.phrase = phrase;
+			this.mySettings = settings
+			this.onSubmit = onSubmit;
+		}
+
+  
+	onOpen() {
+		const { contentEl } = this;
+  
+		contentEl.createEl("h1", { text: "Create flashcard from selection" });
+		// Text box to allow entry of flashcard phrase
+		new Setting(contentEl)
+			.setName("Phrase")
+			.addText(text => text
+				.setValue(this.phrase)
+				.onChange((value) => {
+				this.phrase = value
+			}));
+		
+			// Text box to allow entry of image url
+		new Setting(contentEl)
+			.setName("Enter image URL:")
+			.addText((text) =>
+				text.onChange((value) => {
+				this.imageLink = "![image](" + value + ")";
+			})); 
+
+		new Setting(contentEl).addButton((btn) => btn
+			.setButtonText("Browse..")	
+			.setCta()
+			.onClick(() => {
+				window.open("https://giphy.com/")
+			})
+		)
+		
+		new Setting(contentEl).setName("Enter dictionary form of keyword:").addText((text) =>
+				text.onChange((value) => {
+				this.dictForm = value
+			})
+		); 
+
+		new Setting(contentEl).addButton((btn) => btn
+			.setButtonText("Submit")
+			.setCta()
+			.onClick(() => {
+				this.close();
+				this.setClozeWord();
+				this.setPhraseMinusClozeWord();
+				this.setDisplayPhrase();
+				const result:string = this.getFlashcards();
+				this.onSubmit(result);
+			})
+		);
+	}
+	
+	onClose() {
+		const {contentEl } = this;
+		contentEl.empty();
+	}
+
+	getFlashcards = ():string => {
+		return (
+			this.addLine("#flashcards") +
+			this.generateCloze() +
+			this.generateWhatsThis() +
+			this.generateWhatsDictForm() + 
+			this.generateDictFormMeans() +
+			this.generateWhereDoesItGo()
+		)
+	}
+
+	addLine = (text: string): string => {
+		return(text + "\n")
+	}
+
+	generateCloze = ():string => {
+		return (
+			this.addLine("Fill in the blank") + 
+			this.addLine(this.phrase) +
+			this.addLine(this.imageLink) +
+			this.flashCardDelineator
+		);
+	}
+
+	generateWhatsThis = (): string => {
+		return(
+			this.addLine("**What's this?**") +
+			this.addLine(this.clozeWord) +
+			this.addLine("?") +
+			this.addLine("**" + this.clozeWord + "**") +
+			this.addLine(this.displayPhrase) +
+			this.addLine(this.imageLink) +
+			this.flashCardDelineator
+		);
+	}
+
+	generateWhatsDictForm = (): string => {
+		return(
+			this.addLine("What's the dictionary form for the missing word?") + 
+			this.addLine(this.phraseMinusClozeWord) +
+			this.addLine(this.imageLink) +
+			this.addLine("?") +
+			this.addLine(this.dictForm + "(dictionary form)") +
+			this.addLine(this.displayPhrase) +
+			this.addLine(this.imageLink)+
+			this.flashCardDelineator
+		)
+	}
+
+	generateDictFormMeans = (): string => {
+		return(
+			this.addLine("**What's this?**") +
+			this.addLine(this.dictForm) +
+			this.addLine("?") +
+			this.addLine(this.displayPhrase) +
+			this.addLine(this.imageLink) +
+			this.addLine("Dictionary form: " + this.dictForm) +
+			this.flashCardDelineator
+		)
+	}
+
+	generateWhereDoesItGo = (): string => {
+		return (
+			this.addLine(`Where does ${this.clozeWord} go in the sentence?`) +
+			this.addLine(
+				this.phrase.substring(0, this.clozeWordStartPosition - 2).trim() +  " " +
+				this.phrase.substring(this.clozeWordEndPosition + 3).trim()
+			) +
+			this.addLine(this.imageLink) +
+			this.addLine("?") +
+			this.addLine(this.displayPhrase) +
+			this.addLine(this.imageLink) +
+			this.addLine("Dictionary form:") +
+			this.addLine(this.dictForm) +
+			this.flashCardDelineator
+		);
+	}
+
+	getClozeDelimiters = (): Array<string> => {
+		const delimiters = new Map<string, Array<string>>([
+			['highlight', ['==', '==']],
+			['bold', ['**', "**"]],
+			['curly', ['{{', '}}']]
+			]);
+		// this.flagText = this.mySettings.clozeDelimiter == "bold" ? "==" : "**";
+		return delimiters.get(this.mySettings.clozeDelimiter)??["==","=="]
+	}
+
+	setClozeWord = (): void => {
+		const clozeDelimiters: Array<string> = this.getClozeDelimiters();
+		this.clozeWordStartPosition = this.phrase.indexOf(clozeDelimiters[0]) + 2;
+		this.clozeWordEndPosition = this.phrase.indexOf(clozeDelimiters[1], this.clozeWordStartPosition + 1);
+		this.clozeWord = this.phrase.substring(this.clozeWordStartPosition, this.clozeWordEndPosition);
+	}
+
+	setDisplayPhrase = (): void => {
+		const delimiters: string[] = this.getClozeDelimiters();
+		this.displayPhrase = this.phrase.replace(delimiters[0], "==").replace(delimiters[1], "==");
+	}
+
+	setPhraseMinusClozeWord = (): void => {
+		const clozeWordLength = this.clozeWord.length;
+		const clozeWordBlanked = " " + "_ ".repeat(clozeWordLength);
+		this.phraseMinusClozeWord = this.phrase.substring(0, this.clozeWordStartPosition - 2) + 
+			clozeWordBlanked + 
+			this.phrase.substring(this.clozeWordEndPosition + 2);
+	}
+
+	
+
+}
+
 
 class FlashcardModal extends Modal {
 	// class variables 
@@ -100,6 +336,7 @@ class FlashcardModal extends Modal {
 		app: App, 
 		settings: LangFlashcardsPluginSettings,
 		onSubmit: (phrase: string) => void
+
 	) {
 			super(app);
 			this.mySettings = settings
