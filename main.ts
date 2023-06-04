@@ -55,7 +55,7 @@ export default class LangFlashcardsPlugin extends Plugin {
 			const para_end: string = paragraph.slice(cursor_pos);
 			// split para_start into sentences by looking for .!?
 			// return string in last split
-			const sentences = para_start.split(/[\.!\?]/g);
+			const sentences = para_start.split(/[\.!¡\?¿/]/g);
 			let sentence = sentences[sentences.length-1];
 			sentence = sentence.slice(0, sentence.length - selection.length);
 			sentence += "==";
