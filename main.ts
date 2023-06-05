@@ -12,9 +12,20 @@ const DEFAULT_SETTINGS: LangFlashcardsPluginSettings = {
 
 export default class LangFlashcardsPlugin extends Plugin {
 	settings: LangFlashcardsPluginSettings;
+	auto_translate = false;
+	translator;
 
 	async onload() {
 		await this.loadSettings();
+		this.app.workspace.onLayoutReady(() => {
+			this.translator = app.plugins.plugins["translate"]?.translator
+			if (this.translator && this.translator.valid) {
+				this.auto_translate = true;
+			}
+			console.log(`translator is ${this.translator}`);
+			console.log(`translator.valid is ${this.translator.valid}`);
+			console.log(`Auto translate is ${this.auto_translate}`);
+		});
 /* 
 		// This creates an icon in the left ribbon.
 		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
@@ -70,7 +81,7 @@ export default class LangFlashcardsPlugin extends Plugin {
 		this.addCommand({
 			id: 'create-flashcard-from-selection',
 			name: "Create Language Flashcard from Selection",
-			editorCallback: (editor: Editor) => {
+			editorCallback: async (editor: Editor) => {
 				const lastLine = editor.lastLine();
 				editor.replaceRange("\n",{line: lastLine, ch:editor.getLine(lastLine).length});
 				const selectedText:string = editor.getSelection();
@@ -78,7 +89,8 @@ export default class LangFlashcardsPlugin extends Plugin {
 				const containingSentence = editor.getLine(editor.getCursor().line)
 				const cursor_pos = editor.getCursor().ch
 				const flashcard_sentence = extractSentence(containingSentence, selectedText, cursor_pos);
-
+				const translated_keyword = await this.translator.translate(selectedText, "es", "en");
+				console.log(translated_keyword);
 				const onSubmit = (phrase: string) => {
 					const lastLine = editor.lastLine();
 					editor.setSelection({line: lastLine, ch: 0})
@@ -86,7 +98,7 @@ export default class LangFlashcardsPlugin extends Plugin {
 				};
 			
 			
-				new FlashcardsFromSelectionModal(this.app, flashcard_sentence, this.settings, onSubmit).open();
+				new FlashcardsFromSelectionModal(this.app, flashcard_sentence, translated_keyword.translation, this.settings, onSubmit).open();
 			}
 		})
 
@@ -122,6 +134,7 @@ export default class LangFlashcardsPlugin extends Plugin {
 class FlashcardsFromSelectionModal extends Modal {
 	// class variables 
 	phrase: string;
+	translated_keyword: string
 	displayPhrase: string;
 	imageLink: string;
 	dictForm: string;
@@ -138,12 +151,14 @@ class FlashcardsFromSelectionModal extends Modal {
 	constructor(
 		app: App, 
 		phrase: string,
+		translated_keyword: string,
 		settings: LangFlashcardsPluginSettings,
 		onSubmit: (phrase: string) => void
 
 	) {
 			super(app);
 			this.phrase = phrase;
+			this.translated_keyword = translated_keyword;
 			this.mySettings = settings
 			this.onSubmit = onSubmit;
 		}
@@ -174,7 +189,7 @@ class FlashcardsFromSelectionModal extends Modal {
 			.setButtonText("Browse..")	
 			.setCta()
 			.onClick(() => {
-				window.open("https://giphy.com/")
+				window.open(`https://giphy.com/search/${this.translated_keyword}`)
 			})
 		)
 		
