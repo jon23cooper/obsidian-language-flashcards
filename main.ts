@@ -182,7 +182,7 @@ class FlashcardsFromSelectionModal extends Modal {
 			.setName("Enter image URL:")
 			.addText((text) =>
 				text.onChange((value) => {
-				this.imageLink = "![image](" + value + ")";
+				this.imageLink = "![image|400](" + value + ")";
 			})); 
 
 		new Setting(contentEl).addButton((btn) => btn
@@ -376,7 +376,7 @@ class FlashcardModal extends Modal {
 			.setName("Enter image URL:")
 			.addText((text) =>
 				text.onChange((value) => {
-				this.imageLink = "![image](" + value + ")";
+				this.imageLink = "![image|400](" + value + ")";
 			})); 
 
 		new Setting(contentEl).addButton((btn) => btn
