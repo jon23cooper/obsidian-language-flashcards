@@ -62,19 +62,29 @@ export default class LangFlashcardsPlugin extends Plugin {
 		});
 
 		function extractSentence(paragraph: string, selection: string, cursor_pos: number): string{
+			// check cursor is at end of selection
+			let selection_check = paragraph.slice(cursor_pos - selection.length, cursor_pos)
+			if (selection_check != selection) {
+			// cursor is at wrong end of selection
+			cursor_pos += selection.length
+			selection_check = paragraph.slice(cursor_pos - selection.length, cursor_pos)
+			}
 			const para_start = paragraph.slice(0, cursor_pos);
 			const para_end: string = paragraph.slice(cursor_pos);
 			// split para_start into sentences by looking for .!?
 			// return string in last split
-			const sentences = para_start.split(/[\.!¡\?¿/]/g);
+			const sentences = para_start.split(/[.!¡?¿/]/g);
 			let sentence = sentences[sentences.length-1];
 			sentence = sentence.slice(0, sentence.length - selection.length);
 			sentence += "==";
 			sentence += selection;
 			sentence += "=="
 			// split para_end into sentences keeping the first sentence found
-			const sentence_end = para_end.split(/[\.!\?]/g)[0]
+			const sentence_end = para_end.split(/[.!?]/g)[0]
 			sentence += sentence_end;
+			console.log(`paragraph = ${paragraph}`);
+			console.log(`selection = ${selection}`)
+			console.log(`cursor_pos = ${cursor_pos}`);
 			return sentence;
 		}
 
