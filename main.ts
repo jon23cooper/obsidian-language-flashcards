@@ -18,13 +18,14 @@ export default class LangFlashcardsPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 		this.app.workspace.onLayoutReady(() => {
+			// check translator has loaded and is ready
 			this.translator = app.plugins.plugins["translate"]?.translator
 			if (this.translator && this.translator.valid) {
 				this.auto_translate = true;
 			}
-			console.log(`translator is ${this.translator}`);
-			console.log(`translator.valid is ${this.translator.valid}`);
-			console.log(`Auto translate is ${this.auto_translate}`);
+			//console.log(`translator is ${this.translator}`);
+			//console.log(`translator.valid is ${this.translator.valid}`);
+			//console.log(`Auto translate is ${this.auto_translate}`);
 		});
 /* 
 		// This creates an icon in the left ribbon.
@@ -41,11 +42,13 @@ export default class LangFlashcardsPlugin extends Plugin {
 		statusBarItemEl.setText('Status Bar Text');
 */
 
-		// This adds a simple command that can be triggered anywhere
+		// Add 'Create Language Flashcards' command to menu
+		// opens modal to allow user to add phrase with highlighted keyword
 		this.addCommand({
 			id: 'open-flashcard-modal',
 			name: 'Create Language Flashcards',
 			editorCallback: (editor: Editor) => {
+				const currentPosition = editor.getCursor()
 				const lastLine = editor.lastLine();
 				editor.replaceRange("\n",{line: lastLine, ch:editor.getLine(lastLine).length});
 
@@ -53,6 +56,7 @@ export default class LangFlashcardsPlugin extends Plugin {
 					const lastLine = editor.lastLine();
 					editor.setSelection({line: lastLine, ch: 0})
 					editor.replaceSelection(`${phrase}`);
+					editor.setCursor(currentPosition)
 				};
 			
 			
@@ -92,6 +96,7 @@ export default class LangFlashcardsPlugin extends Plugin {
 			id: 'create-flashcard-from-selection',
 			name: "Create Language Flashcard from Selection",
 			editorCallback: async (editor: Editor) => {
+				const currentPosition = editor.getCursor()
 				const lastLine = editor.lastLine();
 				editor.replaceRange("\n",{line: lastLine, ch:editor.getLine(lastLine).length});
 				const selectedText:string = editor.getSelection();
@@ -100,11 +105,12 @@ export default class LangFlashcardsPlugin extends Plugin {
 				const cursor_pos = editor.getCursor().ch
 				const flashcard_sentence = extractSentence(containingSentence, selectedText, cursor_pos);
 				const translated_keyword = await this.translator.translate(selectedText, "es", "en");
-				console.log(translated_keyword);
+				// console.log(translated_keyword);
 				const onSubmit = (phrase: string) => {
 					const lastLine = editor.lastLine();
 					editor.setSelection({line: lastLine, ch: 0})
 					editor.replaceSelection(`${phrase}`);
+					editor.setCursor(currentPosition);
 				};
 			
 			
