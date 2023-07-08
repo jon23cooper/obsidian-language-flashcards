@@ -1,4 +1,4 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Editor, HexString, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
 
 // Remember to rename these classes and interfaces!
 
@@ -11,6 +11,40 @@ const DEFAULT_SETTINGS: LangFlashcardsPluginSettings = {
 	clozeDelimiter: "highlight"
 }
 
+/*
+Settings Tab
+*/
+
+class LangFlashcardsSettingTab extends PluginSettingTab {
+	plugin: LangFlashcardsPlugin;
+
+	constructor(app: App, plugin: LangFlashcardsPlugin) {
+		super(app, plugin);
+		this.plugin = plugin;
+	}
+
+	display(): void {
+		const {containerEl} = this;
+
+		containerEl.empty();
+
+		containerEl.createEl('h2', {text: 'Settings for my Language flashcard plugin.'});
+		// Choose cloze placeholder, so that it matches that used in obsidian-spaced-repetition plugin
+		new Setting(containerEl)
+			.setName('Cloze Settings')
+			.setDesc('Cloze placeholder set in obsidian-spaced-repetition plugin')
+			.addDropdown((dropdown) => {
+				dropdown
+					.addOptions({highlight: "==highlight==", bold: "**bolded**", curly: "{{curly brackets}}"})
+					.setValue(this.plugin.settings.clozeDelimiter)
+					.onChange(async (value: "highlight" | "bold" | "curly") => {
+						console.log("clozeSetting: " + value)
+						this.plugin.settings.clozeDelimiter = value;
+						await this.plugin.saveSettings();
+					})
+			});
+	}
+}
 
 
 export default class LangFlashcardsPlugin extends Plugin {
@@ -197,9 +231,6 @@ class FlashcardsFromSelectionModal extends Modal {
 	clozeWord: string;
 	clozeWordStartPosition: number;
 	clozeWordEndPosition: number;
-	phraseMinusClozeWord: string;
-	flashCardDelineator = "\n\n";
-	flagText: string;
 	mySettings: LangFlashcardsPluginSettings
 	onSubmit: (phrase: string) => void;
 
@@ -278,9 +309,6 @@ class FlashcardsFromSelectionModal extends Modal {
 			// supplies the flashcard phrases as a string to the onSubmit function
 			.onClick(() => {
 				this.close();
-				this.setClozeWord();
-				this.setPhraseMinusClozeWord();
-				this.setDisplayPhrase();
 				const result:string = this.getFlashcards();
 				this.onSubmit(result);
 			})
@@ -295,114 +323,10 @@ class FlashcardsFromSelectionModal extends Modal {
 
 	// define function to generate content for flashcards
 	getFlashcards = ():string => {
-		return (
-			this.addLine("#flashcards") +
-			this.generateCloze() +
-			this.generateWhatsThis() +
-			this.generateWhatsDictForm() + 
-			this.generateDictFormMeans() +
-			this.generateWhereDoesItGo()
-		)
+		return new flashcardQuestionGenerator(this.phrase, this.imageLink, this.dictForm, this.mySettings).getAllFlashcards();
 	}
 
-	addLine = (text: string): string => {
-		return(text + "\n")
-	}
 
-	generateCloze = ():string => {
-		return (
-			this.addLine("Fill in the blank") + 
-			this.addLine(this.phrase) +
-			this.addLine(this.imageLink) +
-			this.flashCardDelineator
-		);
-	}
-
-	generateWhatsThis = (): string => {
-		return(
-			this.addLine("**What's this?**") +
-			this.addLine(this.clozeWord) +
-			this.addLine("?") +
-			this.addLine("**" + this.clozeWord + "**") +
-			this.addLine(this.displayPhrase) +
-			this.addLine(this.imageLink) +
-			this.flashCardDelineator
-		);
-	}
-
-	generateWhatsDictForm = (): string => {
-		return(
-			this.addLine("What's the dictionary form for the missing word?") + 
-			this.addLine(this.phraseMinusClozeWord) +
-			this.addLine(this.imageLink) +
-			this.addLine("?") +
-			this.addLine(this.dictForm + "(dictionary form)") +
-			this.addLine(this.displayPhrase) +
-			this.addLine(this.imageLink)+
-			this.flashCardDelineator
-		)
-	}
-
-	generateDictFormMeans = (): string => {
-		return(
-			this.addLine("**What's this?**") +
-			this.addLine(this.dictForm) +
-			this.addLine("?") +
-			this.addLine(this.displayPhrase) +
-			this.addLine(this.imageLink) +
-			this.addLine("Dictionary form: " + this.dictForm) +
-			this.flashCardDelineator
-		)
-	}
-
-	generateWhereDoesItGo = (): string => {
-		return (
-			this.addLine(`Where does ${this.clozeWord} go in the sentence?`) +
-			this.addLine(
-				this.phrase.substring(0, this.clozeWordStartPosition - 2).trim() +  " " +
-				this.phrase.substring(this.clozeWordEndPosition + 3).trim()
-			) +
-			this.addLine(this.imageLink) +
-			this.addLine("?") +
-			this.addLine(this.displayPhrase) +
-			this.addLine(this.imageLink) +
-			this.addLine("Dictionary form:") +
-			this.addLine(this.dictForm) +
-			this.flashCardDelineator
-		);
-	}
-
-	getClozeDelimiters = (): Array<string> => {
-		const delimiters = new Map<string, Array<string>>([
-			['highlight', ['==', '==']],
-			['bold', ['**', "**"]],
-			['curly', ['{{', '}}']]
-			]);
-		// this.flagText = this.mySettings.clozeDelimiter == "bold" ? "==" : "**";
-		return delimiters.get(this.mySettings.clozeDelimiter)??["==","=="]
-	}
-
-	setClozeWord = (): void => {
-		const clozeDelimiters: Array<string> = this.getClozeDelimiters();
-		this.clozeWordStartPosition = this.phrase.indexOf(clozeDelimiters[0]) + 2;
-		this.clozeWordEndPosition = this.phrase.indexOf(clozeDelimiters[1], this.clozeWordStartPosition + 1);
-		this.clozeWord = this.phrase.substring(this.clozeWordStartPosition, this.clozeWordEndPosition);
-	}
-
-	setDisplayPhrase = (): void => {
-		const delimiters: string[] = this.getClozeDelimiters();
-		this.displayPhrase = this.phrase.replace(delimiters[0], "==").replace(delimiters[1], "==");
-	}
-
-	setPhraseMinusClozeWord = (): void => {
-		const clozeWordLength = this.clozeWord.length;
-		const clozeWordBlanked = " " + "_ ".repeat(clozeWordLength);
-		this.phraseMinusClozeWord = this.phrase.substring(0, this.clozeWordStartPosition - 2) + 
-			clozeWordBlanked + 
-			this.phrase.substring(this.clozeWordEndPosition + 2);
-	}
-
-	
 
 }
 
@@ -474,9 +398,9 @@ class FlashcardModal extends Modal {
 			.setCta()
 			.onClick(() => {
 				this.close();
-				this.setClozeWord();
-				this.setPhraseMinusClozeWord();
-				this.setDisplayPhrase();
+				//this.setClozeWord();
+				//this.setPhraseMinusClozeWord();
+				//this.setDisplayPhrase();
 				const result:string = this.getFlashcards();
 				this.onSubmit(result);
 			})
@@ -489,29 +413,112 @@ class FlashcardModal extends Modal {
 	}
 
 	getFlashcards = ():string => {
-		return (
-			this.addLine("#flashcards") +
-			this.generateCloze() +
-			this.generateWhatsThis() +
-			this.generateWhatsDictForm() + 
-			this.generateDictFormMeans() +
-			this.generateWhereDoesItGo()
-		)
+		return new flashcardQuestionGenerator(this.phrase, this.imageLink, this.dictForm, this.mySettings).getAllFlashcards();
 	}
 
+}
+
+
+
+/**
+ *
+ *
+ * @class flashcardQuestionGenerator
+ * class to generate obsidian flashcards
+ */
+class flashcardQuestionGenerator {
+	// class variables
+	// the phrase containing the demarcated keyword(s)
+	phrase:string;
+	// the keyword(s)
+	clozeWord: string;	
+	// link to an image representing the keyword(s)
+	imageLink: string;
+	// the dictianry form of the keyword(s)
+	pluginSettings: LangFlashcardsPluginSettings
+	dictForm: string;
+	// the starting index of the keyword(s) in the phrase (calculated)
+	clozeWordStartPosition: number;
+	// the ending index of the keyword(s) in the phrase (calculated)
+	clozeWordEndPosition: number;
+	// a string containing the flashcard representation of the phrase as a cloze question (calculated)
+	clozeQuestion: string;
+	// a string containing the phrase with the keyword(s) missing (caluclated)
+	phraseMinusClozeWord: string;
+	// a string containing the flashcard representation of the what's this? question (calculated)
+	whatsThis: string;
+	// a string containing the flashcard representation of the "What's the Dictionary form?" question (calculated)
+	whatsDictForm: string;
+	// a string containing the flashcard representation of the "What's does this mean? (Dictionary form)" question	 (calculated)
+	dictFormMeans: string;
+	// a string containing the flashcard representation of the "Where does (the keyowd) go?" question (calulated)
+	whereDoesItGo: string;
+	// the characters used to seperate the keyword(s) from the rest of the phrase
+	clozeDelimiters: Array<string>;
+	// the phrase with the keywords not delineated from the rest of the phrase
+	displayPhrase: string;
+	// what to use as a break between flashcards
+	delineator = "\n\n";
+	// the header used to start a set of flashcards
+	flashcardHeader = "#flashcards\n"
+
+	/**
+	 * Creates an instance of flashcardQuestionGenerator.
+	 * @param {string} phrase
+	 * - phrase containing delineated keyword(s)
+	 * @param {string} imageLink
+	 * - flashcard image
+	 * @param {string} dictForm
+	 * - disctionary form of keyword(s)
+	 * @param {string []} clozeDelimiters
+	 * - pair of strings used to delineate the keyword(s)
+	 * @memberof flashcardQuestionGenerator
+	 */
+	constructor(
+		phrase: string,
+		imageLink: string,
+		dictForm: string,
+		pluginSettings: LangFlashcardsPluginSettings
+	){
+		// set up values for the class variables
+		this.phrase = phrase;
+		this.imageLink = imageLink;
+		this.dictForm = dictForm;
+		this.clozeDelimiters = this.getClozeDelimiters(pluginSettings);
+		this.clozeWord = this.setClozeWord();
+		this.displayPhrase = this.setDisplayPhrase();
+		this.phraseMinusClozeWord = this.setPhraseMinusClozeWord();
+		this.clozeQuestion = this.generateClozeQuestion();
+		this.whatsThis = this.generateWhatsThis();
+		this.whatsDictForm = this.generateWhatsDictForm();
+		this.dictFormMeans = this.generateDictFormMeans();
+		this.whereDoesItGo = this.generateWhereDoesItGo();
+	}
+	// add a new line
 	addLine = (text: string): string => {
 		return(text + "\n")
 	}
 
-	generateCloze = ():string => {
-		return (
+	/**
+	* generates a flashcard cloze question
+	* used to set the value of clozeQuestion class variable
+	*/
+
+	generateClozeQuestion = (): string => {
+		return(
 			this.addLine("Fill in the blank") + 
 			this.addLine(this.phrase) +
 			this.addLine(this.imageLink) +
-			this.flashCardDelineator
+			this.delineator
 		);
 	}
 
+	/**
+	 * generate What's this? flashcard question
+	 * used to set whatsThis class variable
+	 * 
+	 * @memberOf flashcardQuestionGenerator
+	 */
 	generateWhatsThis = (): string => {
 		return(
 			this.addLine("**What's this?**") +
@@ -520,10 +527,16 @@ class FlashcardModal extends Modal {
 			this.addLine("**" + this.clozeWord + "**") +
 			this.addLine(this.displayPhrase) +
 			this.addLine(this.imageLink) +
-			this.flashCardDelineator
+			this.delineator
 		);
 	}
 
+	/**
+	 * generate What's the dictionary form of (keyword(s)) flashcard question
+	 * used to set whatsDictForm class variable
+	 * 
+	 * @memberOf flashcardQuestionGenerator
+	 */
 	generateWhatsDictForm = (): string => {
 		return(
 			this.addLine("What's the dictionary form for the missing word?") + 
@@ -533,10 +546,45 @@ class FlashcardModal extends Modal {
 			this.addLine(this.dictForm + "(dictionary form)") +
 			this.addLine(this.displayPhrase) +
 			this.addLine(this.imageLink)+
-			this.flashCardDelineator
+			this.delineator
 		)
 	}
-
+	/**
+	 * generate the display phrase (the phrase with the keyword(s) highlighted
+	 * used to set display phrase class variable
+	 * 
+	 * @memberof flashcardQuestionGenerator
+	 */
+	setDisplayPhrase = (): string => {
+		return this.phrase.replace(this.clozeDelimiters[0], "==").replace(this.clozeDelimiters[1], "==");
+	}
+	/**	
+	 * generate the phrase with the keyword(s) missing
+	 * used to set phraseMinuseClozeWord class variable
+	 * @memberof flashcardQuestionGenerator
+	 */
+	setPhraseMinusClozeWord = (): string => {
+		const clozeWordBlanked = `(${this.clozeWord.length})`;
+		return this.phrase.substring(0, this.clozeWordStartPosition - 2) + 
+			clozeWordBlanked + 
+			this.phrase.substring(this.clozeWordEndPosition + 2);
+	}
+	/**
+	 * get the keyword(s)
+	 * used to set clozeWord class variable
+	 * @memberof flashcardQuestionGenerator
+	 */
+	setClozeWord = (): string => {
+		this.clozeWordStartPosition = this.phrase.indexOf(this.clozeDelimiters[0]) + 2;
+		this.clozeWordEndPosition = this.phrase.indexOf(this.clozeDelimiters[1], this.clozeWordStartPosition + 1);
+		return this.phrase.substring(this.clozeWordStartPosition, this.clozeWordEndPosition);
+	}
+	/**
+	 * generate the What does this mean? flashcard using the dictionary form of the keyword(s)
+	 * sets dictFormMeans class vaiable
+	 * 
+	 * @memberof flashcardQuestionGenerator
+	 */
 	generateDictFormMeans = (): string => {
 		return(
 			this.addLine("**What's this?**") +
@@ -545,10 +593,14 @@ class FlashcardModal extends Modal {
 			this.addLine(this.displayPhrase) +
 			this.addLine(this.imageLink) +
 			this.addLine("Dictionary form: " + this.dictForm) +
-			this.flashCardDelineator
+			this.delineator
 		)
 	}
-
+	/**
+	 * generate the Where does (keyword) go in the sentence? flashcard
+	 * sets whereDoesItGo class variable
+	 * @memberof flashcardQuestionGenerator
+	 */
 	generateWhereDoesItGo = (): string => {
 		return (
 			this.addLine(`Where does ${this.clozeWord} go in the sentence?`) +
@@ -562,75 +614,37 @@ class FlashcardModal extends Modal {
 			this.addLine(this.imageLink) +
 			this.addLine("Dictionary form:") +
 			this.addLine(this.dictForm) +
-			this.flashCardDelineator
+			this.delineator
 		);
 	}
+	/**
+	 * return a string containing all of the flashcard types and a header
+	 *
+	 * @memberof flashcardQuestionGenerator
+	 */
+	getAllFlashcards = ():string => {
+		return (
+		this.flashcardHeader +
 
-	getClozeDelimiters = (): Array<string> => {
+		this.clozeQuestion +
+
+		this.whatsThis +
+
+		this.whatsDictForm +
+
+		this.dictFormMeans +
+
+		this.whereDoesItGo
+		)
+	}
+
+	getClozeDelimiters = (pluginSettings: LangFlashcardsPluginSettings): Array<string> => {
 		const delimiters = new Map<string, Array<string>>([
 			['highlight', ['==', '==']],
 			['bold', ['**', "**"]],
 			['curly', ['{{', '}}']]
 			]);
 		// this.flagText = this.mySettings.clozeDelimiter == "bold" ? "==" : "**";
-		return delimiters.get(this.mySettings.clozeDelimiter)??["==","=="]
-	}
-
-	setClozeWord = (): void => {
-		const clozeDelimiters: Array<string> = this.getClozeDelimiters();
-		this.clozeWordStartPosition = this.phrase.indexOf(clozeDelimiters[0]) + 2;
-		this.clozeWordEndPosition = this.phrase.indexOf(clozeDelimiters[1], this.clozeWordStartPosition + 1);
-		this.clozeWord = this.phrase.substring(this.clozeWordStartPosition, this.clozeWordEndPosition);
-	}
-
-	setDisplayPhrase = (): void => {
-		const delimiters: string[] = this.getClozeDelimiters();
-		this.displayPhrase = this.phrase.replace(delimiters[0], "==").replace(delimiters[1], "==");
-	}
-
-	setPhraseMinusClozeWord = (): void => {
-		const clozeWordLength = this.clozeWord.length;
-		const clozeWordBlanked = " " + "_ ".repeat(clozeWordLength);
-		this.phraseMinusClozeWord = this.phrase.substring(0, this.clozeWordStartPosition - 2) + 
-			clozeWordBlanked + 
-			this.phrase.substring(this.clozeWordEndPosition + 2);
-	}
-
-	
-
-}
-
-/*
-Settings Tab
-*/
-
-class LangFlashcardsSettingTab extends PluginSettingTab {
-	plugin: LangFlashcardsPlugin;
-
-	constructor(app: App, plugin: LangFlashcardsPlugin) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
-
-	display(): void {
-		const {containerEl} = this;
-
-		containerEl.empty();
-
-		containerEl.createEl('h2', {text: 'Settings for my Language flashcard plugin.'});
-		// Choose cloze placeholder, so that it matches that used in obsidian-spaced-repetition plugin
-		new Setting(containerEl)
-			.setName('Cloze Settings')
-			.setDesc('Cloze placeholder set in obsidian-spaced-repetition plugin')
-			.addDropdown((dropdown) => {
-				dropdown
-					.addOptions({highlight: "==highlight==", bold: "**bolded**", curly: "{{curly brackets}}"})
-					.setValue(this.plugin.settings.clozeDelimiter)
-					.onChange(async (value: "highlight" | "bold" | "curly") => {
-						console.log("clozeSetting: " + value)
-						this.plugin.settings.clozeDelimiter = value;
-						await this.plugin.saveSettings();
-					})
-			});
+		return delimiters.get(pluginSettings.clozeDelimiter)??["==","=="]
 	}
 }
