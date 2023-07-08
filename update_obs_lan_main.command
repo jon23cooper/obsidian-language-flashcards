@@ -1,0 +1,1 @@
+cp /Users/joncooper/Library/CloudStorage/GoogleDrive-jcooper.ffh@gmail.com/My\ Drive/Obsidian_pluginDev/.obsidian/plugins/obsidian-language-flashcards/main.js /Users/joncooper/Library/CloudStorage/GoogleDrive-jcooper.ffh@gmail.com/My\ Drive/Obsidian_language/Languages/.obsidian/plugins/obsidian-language-flashcards/main.js 
