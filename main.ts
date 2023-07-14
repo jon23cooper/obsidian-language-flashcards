@@ -1,14 +1,16 @@
 import { App, Editor, HexString, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
 
-// Remember to rename these classes and interfaces!
+var stringSimilarity =require('string-similarity')
 
 interface LangFlashcardsPluginSettings {
 	clozeDelimiter: string;
+	mwApiKey: string;
 }
 
 const DEFAULT_SETTINGS: LangFlashcardsPluginSettings = {
 	// set clozeDelimiter to the string defined by clozeDelimeter in plugin settings
-	clozeDelimiter: "highlight"
+	clozeDelimiter: "highlight",
+	mwApiKey: ""
 }
 
 /*
@@ -43,6 +45,20 @@ class LangFlashcardsSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					})
 			});
+
+		// enter key for Merriam-Webster Spanish English Dictionary
+		// https://www.dictionaryapi.com/products/index
+		new Setting(containerEl)
+			.setName('Merriam-Webster api key')
+			.setDesc('Obtain from https://www.dictionaryapi.com/')
+			.addText(text => text
+				.setPlaceholder('Enter api key')
+				.setValue(this.plugin.settings.mwApiKey)
+				.onChange(async (value) => {
+					console.log(`Api key: ${value}`);
+					this.plugin.settings.mwApiKey = value;
+					await this.plugin.saveSettings();
+				}));
 	}
 }
 
@@ -186,7 +202,8 @@ export default class LangFlashcardsPlugin extends Plugin {
 				// get the sentence containing the keyword
 				const flashcard_sentence = extractSentence(containingSentence, selectedText, cursor_pos);
 				// translate the keyword
-				const translated_keyword = await this.translator.translate(selectedText, "es", "en");
+				// const translated_keyword = await this.translator.translate(selectedText, "es", "en");
+				const keyword = selectedText;
 				// console.log(translated_keyword);
 				// define function to run when the user presses the modal submit button
 				// Adds the string returned by the modal to the end of the current document and sets the cursor to the position it started from
@@ -198,7 +215,7 @@ export default class LangFlashcardsPlugin extends Plugin {
 				};
 			
 				// create the modal
-				new FlashcardsFromSelectionModal(this.app, flashcard_sentence, translated_keyword.translation, this.settings, onSubmit).open();
+				new FlashcardsFromSelectionModal(this.app, flashcard_sentence, keyword, this.settings, onSubmit).open();
 			}
 		})
 
@@ -224,13 +241,11 @@ export default class LangFlashcardsPlugin extends Plugin {
 class FlashcardsFromSelectionModal extends Modal {
 	// class variables 
 	phrase: string;
-	translated_keyword: string
 	displayPhrase: string;
 	imageLink: string;
 	dictForm: string;
-	clozeWord: string;
-	clozeWordStartPosition: number;
-	clozeWordEndPosition: number;
+	keyword: string;
+	translator: EsTranslator
 	mySettings: LangFlashcardsPluginSettings
 	onSubmit: (phrase: string) => void;
 
@@ -242,7 +257,7 @@ class FlashcardsFromSelectionModal extends Modal {
 		// (a phrase containing a keyword which is used to create flashcards)
 		phrase: string,
 		// a translation (into english) of the keyword in the phrase
-		translated_keyword: string,
+		keyword: string,
 		// the current plugin settings
 		settings: LangFlashcardsPluginSettings,
 		// an onSubmit function which returns nothing
@@ -252,14 +267,17 @@ class FlashcardsFromSelectionModal extends Modal {
 			// assign the values supplied to the constructor to class variables
 			super(app);
 			this.phrase = phrase;
-			this.translated_keyword = translated_keyword;
+			this.keyword = keyword;
 			this.mySettings = settings
+			this.translator = new EsTranslator(this.mySettings.mwApiKey, keyword)
 			this.onSubmit = onSubmit;
 		}
 
 	// code to run when the modal is opened
 	onOpen() {
 		const { contentEl } = this;
+
+		
   
 		contentEl.createEl("h1", { text: "Create flashcard from selection" });
 		// Text box to allow entry of flashcard phrase
@@ -646,5 +664,113 @@ class flashcardQuestionGenerator {
 			]);
 		// this.flagText = this.mySettings.clozeDelimiter == "bold" ? "==" : "**";
 		return delimiters.get(pluginSettings.clozeDelimiter)??["==","=="]
+	}
+}
+
+
+/**
+ * 
+ * @interface Translation
+ */
+
+interface Translation {
+	meta: Object,
+	hwi: Object,
+	fl: string,
+	def: Array<Object>
+	shortdef: Array<Object>
+
+}
+
+interface Headword {
+	hw: string,
+	prs: Array<Object>,
+	ahws: Array<Object>
+}
+
+interface Meta {
+	lang: string,
+}
+
+/**
+ * 
+ * @class EsTranslator
+ * class to handle calls to translation API
+ * Merriam-Webster Spanish English Dictionary with audio
+ * https://www.dictionaryapi.com
+ */
+class EsTranslator {
+	apiKey: string
+	word: string
+	response: any
+
+	/**
+	 * 
+	 * @param apiKey api key for service
+	 * @param word word to be translated
+	 */
+	constructor (apiKey: string, word: string){
+		this.apiKey = apiKey
+		this.word = word
+		this.getTranslation(apiKey, word);
+	}
+
+
+
+	getTranslation = async (apiKey: string, word: string) => {
+			const response = await fetch(`https://www.dictionaryapi.com/api/v3/references/spanish/json/${word}?key=${apiKey}`)
+			console.log(response.status)
+			console.log(response.statusText)
+
+			if (response.status == 200) {
+				let data = await response.json();
+				if (typeof data[0] === 'string'){
+					// has not found definition, will have found list
+					// of possible suspects
+					this.getTranslation(apiKey, data[0])
+				} else {
+					if (this.instanceOfTranslation(data)) {
+						this.parseResponse(data, word)
+					}
+				}	
+			} else {
+				// error
+				let data = {}
+			}
+
+	}
+
+
+
+	instanceOfTranslation(data: any): data is Translation {
+		return 'meta' in data[0]
+	}
+
+	parseResponse(data: any, word: string) {
+		// get the best translation where language = es
+		console.log(data)
+		console.log(`Parsing: ${JSON.stringify(data)}`)
+		console.log(typeof data)
+		let spanish_defs = null;
+		let definition = null;
+
+		spanish_defs = data.filter(element => {
+			return element.meta.lang == 'es'
+		});
+
+		if (spanish_defs.length > 1){
+			const hws:Array<string> = [];
+			spanish_defs.forEach(element => {
+				hws.push(element.hwi.hw)
+			});
+			console.log(hws);
+			const comparisonResult = stringSimilarity.findBestMatch(word, hws)
+			console.log(comparisonResult)
+			definition = spanish_defs[comparisonResult.bestMatchIndex]
+		} else {
+			definition = spanish_defs[0]
+		}
+		
+		console.log(`Definition: ${JSON.stringify(definition)}`);
 	}
 }
