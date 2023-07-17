@@ -1,16 +1,18 @@
-import { App, Editor, HexString, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Editor, HexString, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TextAreaComponent, request } from 'obsidian';
 
 var stringSimilarity =require('string-similarity')
 
 interface LangFlashcardsPluginSettings {
 	clozeDelimiter: string;
 	mwApiKey: string;
+	googleApiKey: string;
 }
 
 const DEFAULT_SETTINGS: LangFlashcardsPluginSettings = {
 	// set clozeDelimiter to the string defined by clozeDelimeter in plugin settings
 	clozeDelimiter: "highlight",
-	mwApiKey: ""
+	mwApiKey: "",
+	googleApiKey: ""
 }
 
 /*
@@ -58,15 +60,33 @@ class LangFlashcardsSettingTab extends PluginSettingTab {
 					console.log(`Api key: ${value}`);
 					this.plugin.settings.mwApiKey = value;
 					await this.plugin.saveSettings();
-				}));
+				})
+			);
+
+		/**
+		 * allow user to enter key for Google Cloud Translation API
+		 * https://console.cloud.google.com/apis/library/translate.googleapis.com
+		 */
+		new Setting(containerEl)
+		.setName('Google Cloud Translation API Key')
+		.setDesc('Obtain from https://cloud.google.com')
+		.addText(text => text
+			.setPlaceholder('Enter api key')
+			.setValue(this.plugin.settings.googleApiKey)
+			.onChange( async (value) => {
+				this.plugin.settings.googleApiKey = value;
+				await this.plugin.saveSettings();
+			})
+		);
 	}
 }
 
 
 export default class LangFlashcardsPlugin extends Plugin {
 	settings: LangFlashcardsPluginSettings;
+	googleTranslator: GoogleTranslator;
 	auto_translate = false;
-	translator;
+
 
 	// Load settings and store them in the config object. This is called when we have a page
 	async loadSettings() {
@@ -87,15 +107,9 @@ export default class LangFlashcardsPlugin extends Plugin {
 	// adds command to command menu and defines them
 	async onload() {
 		await this.loadSettings();
+		this.googleTranslator = new GoogleTranslator(this.settings.googleApiKey);
 		this.app.workspace.onLayoutReady(() => {
-			// check translator has loaded and is ready
-			this.translator = app.plugins.plugins["translate"]?.translator
-			if (this.translator && this.translator.valid) {
-				this.auto_translate = true;
-			}
-			//console.log(`translator is ${this.translator}`);
-			//console.log(`translator.valid is ${this.translator.valid}`);
-			//console.log(`Auto translate is ${this.auto_translate}`);
+			//stuff to check to ensure all is good to go
 		});
 /* 
 		// This creates an icon in the left ribbon.
@@ -219,6 +233,27 @@ export default class LangFlashcardsPlugin extends Plugin {
 			}
 		})
 
+		this.addCommand({
+			id: 'translate-selected-text',
+			name: "Translate selected text",
+			editorCallback: async (editor: Editor) => {
+				const selectedText: string = editor.getSelection();
+				try {
+					const translation = await this.googleTranslator.translate(selectedText)
+				
+					const onSubmit = (text: string) => {
+						// do nothing
+					}
+	
+					// create the modal
+					new TranslateModal(this.app, selectedText, translation, onSubmit).open()
+				} catch(error) {
+					console.log(error)
+				}
+
+			}
+		})
+
 		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new LangFlashcardsSettingTab(this.app, this));
 /*
@@ -235,6 +270,43 @@ export default class LangFlashcardsPlugin extends Plugin {
 	}
 }
 
+/**
+ * 
+ * @class Translate Modal
+ * 
+ */
+class TranslateModal extends Modal {
+	text: string;
+	translation: string;
+	settings: LangFlashcardsPluginSettings;
+	onSubmit: (phrase: string) => void;
+
+	constructor(
+		app: App,
+		text: string,
+		translation: string,
+		onSubmit: (text: string) => void
+	) {
+		super(app);
+		this.text = text;
+		this.translation = translation[0]
+		console.log(`Translation = ${this.translation}`)
+	}
+
+	onOpen(): void {
+		const {contentEl} = this;
+		// contentEl.createEl("h1", {text: "Translate selection"});
+		contentEl.createEl("p", {text: this.translation});
+
+	}
+
+
+	onClose() {
+		const {contentEl } = this;
+		contentEl.empty();
+	}
+}
+
 
 // defines modal to be presented when the command 
 // create flashcard from selection is chosen by the user
@@ -245,7 +317,8 @@ class FlashcardsFromSelectionModal extends Modal {
 	imageLink: string;
 	dictForm: string;
 	keyword: string;
-	translator: EsTranslator
+	dictionaryEntry: EsDictionary
+	translation: string|Array<string>
 	mySettings: LangFlashcardsPluginSettings
 	onSubmit: (phrase: string) => void;
 
@@ -269,20 +342,21 @@ class FlashcardsFromSelectionModal extends Modal {
 			this.phrase = phrase;
 			this.keyword = keyword;
 			this.mySettings = settings
-			this.translator = new EsTranslator(this.mySettings.mwApiKey, keyword)
+			this.dictionaryEntry = new EsDictionary(this.mySettings.mwApiKey, keyword)
+			console.log("Calling translateText")
+			console.log(new EsTranslate(this.mySettings.googleApiKey).translate(keyword));
 			this.onSubmit = onSubmit;
 		}
 
 	// code to run when the modal is opened
 	onOpen() {
 		const { contentEl } = this;
-
-		
   
 		contentEl.createEl("h1", { text: "Create flashcard from selection" });
 		// Text box to allow entry of flashcard phrase
 		// initially filled with supplied phrase
 		// if it is changed then it updates the value of the phrase class variable
+	
 		new Setting(contentEl)
 			.setName("Phrase")
 			.addText(text => text
@@ -306,7 +380,8 @@ class FlashcardsFromSelectionModal extends Modal {
 			.setButtonText("Browse..")	
 			.setCta()
 			.onClick(() => {
-				window.open(`https://giphy.com/search/${this.translated_keyword}`)
+				console.log(`url: https://giphy.com/search/${this.dictionaryEntry.meaning}`)
+				window.open(`https://giphy.com/search/${this.dictionaryEntry.meaning}`)
 			})
 		)
 		// text box allowing the user to enter the dictionary form of the keyword
@@ -318,7 +393,7 @@ class FlashcardsFromSelectionModal extends Modal {
 		
 		// the Submit button
 		
-		new Setting(contentEl).addButton((btn) => btn
+		new Setting(contentEl).addButton((btn) => btn 
 			.setButtonText("Submit")
 			.setCta()
 			// when clicked
@@ -692,18 +767,66 @@ interface Meta {
 	lang: string,
 }
 
+interface TranslateTextResponseTranslation {
+	detectedSourceLanguage: string,
+	model: string,
+	translatedText: string,
+}
+
+interface TranslateTextResponseList{
+	translations: Array<TranslateTextResponseTranslation>
+}
+
 /**
  * 
- * @class EsTranslator
- * class to handle calls to translation API
+ * @class GoogleTranslate 
+ * translate spanish to english using Google Cloud Translation service
+ * 
+ */
+class GoogleTranslator {
+	private key: string;
+	sourceLanguage: string = "es"
+	text: string|Array<string>;
+	targetLanguage: string = "en";
+	format: string = "text"
+	translation: TranslateTextResponseList;
+	translations: Array<string>;
+
+	public constructor (key: string){
+		this.key = key;
+	}
+
+	public async translate(text: string[]|string): Promise<string[]> {
+		const translations:string[] = [];
+		try {
+			const response = await request(`https://translation.googleapis.com/language/translate/v2?key=${this.key}&q=${text}&target=${this.targetLanguage}&source=${this.sourceLanguage}&format=${this.format}`);
+
+			const parsedResponse = JSON.parse(response);
+			console.log(`Parsed Response = ${JSON.stringify(parsedResponse.data)}`)
+			parsedResponse.data.translations.forEach(((item: TranslateTextResponseTranslation) => {
+				translations.push(item.translatedText)
+			}))
+
+		} catch (error){
+			console.log(error)
+		}
+		return translations;
+	}
+}
+
+/**
+ * 
+ * @class EsDictionary
+ * class to handle calls to Dictionary API
  * Merriam-Webster Spanish English Dictionary with audio
  * https://www.dictionaryapi.com
  */
-class EsTranslator {
+class EsDictionary {
 	apiKey: string
 	word: string
 	response: any
-
+	definition: Translation
+	meaning: Array<string>
 	/**
 	 * 
 	 * @param apiKey api key for service
@@ -712,12 +835,12 @@ class EsTranslator {
 	constructor (apiKey: string, word: string){
 		this.apiKey = apiKey
 		this.word = word
-		this.getTranslation(apiKey, word);
+		this.getDictionaryEntry(apiKey, word);
 	}
 
 
 
-	getTranslation = async (apiKey: string, word: string) => {
+	getDictionaryEntry = async (apiKey: string, word: string) => {
 			const response = await fetch(`https://www.dictionaryapi.com/api/v3/references/spanish/json/${word}?key=${apiKey}`)
 			console.log(response.status)
 			console.log(response.statusText)
@@ -727,9 +850,9 @@ class EsTranslator {
 				if (typeof data[0] === 'string'){
 					// has not found definition, will have found list
 					// of possible suspects
-					this.getTranslation(apiKey, data[0])
+					this.getDictionaryEntry(apiKey, data[0])
 				} else {
-					if (this.instanceOfTranslation(data)) {
+					if (this.instanceOfDictionary(data)) {
 						this.parseResponse(data, word)
 					}
 				}	
@@ -742,7 +865,7 @@ class EsTranslator {
 
 
 
-	instanceOfTranslation(data: any): data is Translation {
+	instanceOfDictionary(data: any): data is Translation {
 		return 'meta' in data[0]
 	}
 
@@ -771,6 +894,16 @@ class EsTranslator {
 			definition = spanish_defs[0]
 		}
 		
+		this.definition = definition;
+		this.meaning = definition.shortdef
+			.join("%20")
+			.replace(/ /g, "%20")
+			.replace(/\(/g, "%28")
+			.replace(/\)/g, "%29")
+			.replace(/\,/g, "%2C")
+			.substring(0, 62)
+			.replace(/\%$/, "");
+		console.log(typeof this.meaning);
 		console.log(`Definition: ${JSON.stringify(definition)}`);
 	}
 }
